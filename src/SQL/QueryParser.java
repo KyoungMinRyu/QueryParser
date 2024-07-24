@@ -108,9 +108,9 @@ public class QueryParser
     	{
     		param = params[i].trim();
     		if(i == params.length - 1)
-    			query.append("NVL(" + alias + "." + param + ", '') AS " + param + "\n");
+    			query.append("COALESCE(" + alias + "." + param + ", '') AS " + param + "\n");
 			else
-    			query.append("NVL(" + alias + "." + param + ", '') AS " + param + ",\n\t");
+    			query.append("COALESCE(" + alias + "." + param + ", '') AS " + param + ",\n\t");
     	}
     	query.append("FROM\n\t");
     	query.append(subString(parseQuery, " ", ";"));
@@ -149,7 +149,7 @@ public class QueryParser
 	 **/
 	private static String paramToNVL(String param)
 	{
-		return "CASE WHEN (NVL(#{" + param + "}, '') = '') THEN NULL ELSE #{" + param + "} END";
+		return "CASE WHEN (COALESCE(TRIM(#{" + param + "}), '') = '') THEN NULL ELSE TRIM(#{" + param + "}) END";
 	}
 	
 	/**
