@@ -11,7 +11,7 @@ public class QueryParser
 	public static void main(String [] args)
 	{
 		Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-        Transferable transferable = clipboard.getContents(null); // 클립보드에서 데이터 가져오기 
+        Transferable transferable = clipboard.getContents(null); // 클립보드에서 복사된 데이터 가져오기 
         StringBuilder query = new StringBuilder();
         if(transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) 
         {
@@ -33,7 +33,7 @@ public class QueryParser
                 e.printStackTrace();
             }
             System.out.println(query.toString());
-            clipboard.setContents(new StringSelection(query.toString()), null); // 클립보드에 다시 넣기
+            clipboard.setContents(new StringSelection(query.toString()), null); // SQL 복사해서 클립보드에 다시 넣기
         }
 	}
 	
@@ -49,9 +49,9 @@ public class QueryParser
     	{
     		param = params[i].trim();
     		if(i == params.length - 1)
-    			query.append(paramToNVL(param) + "\n"); // CASE WHEN (IFNULL(#{prm_type}, '') = '') THEN NULL ELSE #{prm_type} END
+    			query.append(paramToCOALESCE(param) + "\n");
 			else
-    			query.append(paramToNVL(param) +  ",\n\t");
+    			query.append(paramToCOALESCE(param) +  ",\n\t");
     	}
     	query.append(")");
 	}
@@ -82,9 +82,9 @@ public class QueryParser
     		param = param.substring(0, param.indexOf("=")).trim();
 			query.append(param);
 			if(i == params.length - 1)
-    			query.append(" = " + paramToNVL(param) + "\n");
+    			query.append(" = " + paramToCOALESCE(param) + "\n");
 			else
-    			query.append(" = " + paramToNVL(param) + ",\n\t");
+    			query.append(" = " + paramToCOALESCE(param) + ",\n\t");
     	}
     	deleteStringBuilder(parseQuery, "WHERE ".length());
     	params = parseQuery.toString().split("AND");
@@ -142,12 +142,12 @@ public class QueryParser
 	
 	/**
 	 * <pre>
-	 * 메소드명 : paramToNVL
+	 * 메소드명 : paramToCOALESCE
 	 * @param String param
 	 * @return String
-	 * 설명 : 파라미터가 공백이면 NULL로 설정하는 문으로 바꿈
+	 * 설명 : 파라미터가 양끝 공백 제거 후 공백이면 NULL로 설정
 	 **/
-	private static String paramToNVL(String param)
+	private static String paramToCOALESCE(String param)
 	{
 		return "CASE WHEN (COALESCE(TRIM(#{" + param + "}), '') = '') THEN NULL ELSE TRIM(#{" + param + "}) END";
 	}
