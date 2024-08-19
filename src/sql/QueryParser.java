@@ -16,8 +16,7 @@ import java.util.stream.Stream;
 
 import sql.model.Table;
 
-public class QueryParser {
-	public static void main(String[] args) {
+public static void main(String[] args) {
 		Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
 		Transferable transferable = clipboard.getContents(null); // 클립보드에서 데이터 가져오기
 		Table table = null;
@@ -25,7 +24,7 @@ public class QueryParser {
 		if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
 			try {
 				StringBuilder stringBuilder = new StringBuilder(
-					(String)transferable.getTransferData(DataFlavor.stringFlavor));
+						(String) transferable.getTransferData(DataFlavor.stringFlavor));
 				System.out.println("원본\n" + stringBuilder.toString() + "\n\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
 
 				table = handleQuery(detectQueryType(stringBuilder.toString()), stringBuilder);
@@ -34,6 +33,8 @@ public class QueryParser {
 				clipboard.setContents(new StringSelection(table.getAllSQL()), null); // 클립보드에 다시 넣기
 			} catch (StringIndexOutOfBoundsException e) {
 				System.out.println("SQL 구문 오류");
+			} catch (IllegalArgumentException e) {
+				System.out.println("CREATE DDL 구문 오류");
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -51,18 +52,18 @@ public class QueryParser {
 
 	private static Table handleQuery(String queryType, StringBuilder stringBuilder) {
 		switch (queryType) {
-			case "CREATE":
-				return tableToQuery(parseDDL(stringBuilder.toString()));
-			case "DELETE":
-				return delete(stringBuilder);
-			case "UPDATE":
-				return update(stringBuilder);
-			case "INSERT":
-				return insert(stringBuilder);
-			case "SELECT":
-				return select(stringBuilder);
-			default:
-				return null;
+		case "CREATE":
+			return tableToQuery(parseDDL(stringBuilder.toString()));
+		case "DELETE":
+			return delete(stringBuilder);
+		case "UPDATE":
+			return update(stringBuilder);
+		case "INSERT":
+			return insert(stringBuilder);
+		case "SELECT":
+			return select(stringBuilder);
+		default:
+			return null;
 		}
 	}
 
@@ -96,7 +97,7 @@ public class QueryParser {
 		Table table = new Table();
 		String tableName = subString(parseQuery, "INSERT INTO ", "(");
 		table.setTableName(
-			tableName.contains(".") ? subString(parseQuery, ".", "(") : subString(parseQuery, "INSERT INTO ", ";"));
+				tableName.contains(".") ? subString(parseQuery, ".", "(") : subString(parseQuery, "INSERT INTO ", ";"));
 		table.setAlias(getAlias(table.getTableName()));
 		table.setColumns(subString(parseQuery, "(", ")").split(","));
 		setColumnsToPrimaryKey(table);
@@ -106,22 +107,20 @@ public class QueryParser {
 
 	private static String getInsertSQL(Table table) {
 		String columns = Arrays.stream(table.getColumns()).map(String::trim).collect(Collectors.joining(",\n\t"));
-		String values = Arrays.stream(table.getColumns())
-			.map(column -> "#{" + snakeToCamel(column.trim()) + "}")
-			.collect(Collectors.joining(",\n\t"));
+		String values = Arrays.stream(table.getColumns()).map(column -> "#{" + snakeToCamel(column.trim()) + "}")
+				.collect(Collectors.joining(",\n\t"));
 		return String.format("INSERT INTO %s\n(\n\t%s\n)\nVALUES\n(\n\t%s\n)", table.getTableName(), columns, values);
 	}
 
 	private static void setColumnsToPrimaryKey(Table table) {
-		table.setPrimaryKey(Arrays.stream(table.getColumns())
-			.filter(column -> column.contains("id"))
-			.toArray(String[]::new));
+		table.setPrimaryKey(
+				Arrays.stream(table.getColumns()).filter(column -> column.contains("id")).toArray(String[]::new));
 	}
 
 	private static Table delete(StringBuilder parseQuery) {
 		Table table = new Table();
 		table.setTableName(subString(parseQuery, "FROM ", "WHERE").contains(".") ? subString(parseQuery, ".", "WHERE")
-			: subString(parseQuery, "FROM ", "WHERE"));
+				: subString(parseQuery, "FROM ", "WHERE"));
 		table.setAlias(getAlias(table.getTableName()));
 		table.setPrimaryKey(pairArrayToSingle(subString(parseQuery, "WHERE ", ";").split("AND")));
 		table.setColumns(table.getPrimaryKey());
@@ -136,36 +135,32 @@ public class QueryParser {
 	private static Table update(StringBuilder parseQuery) {
 		Table table = new Table();
 		table.setTableName(subString(parseQuery, "UPDATE ", "SET").contains(".") ? subString(parseQuery, ".", "SET")
-			: subString(parseQuery, "UPDATE ", "SET"));
+				: subString(parseQuery, "UPDATE ", "SET"));
 		table.setAlias(getAlias(table.getTableName()));
 		table.setPrimaryKey(pairArrayToSingle(subString(parseQuery, "WHERE ", ";").split("AND")));
-		table.setColumns(Stream
-			.concat(Arrays.stream(pairArrayToSingle(subString(parseQuery, "SET ", "WHERE").split(","))),
-				Arrays.stream(table.getPrimaryKey()))
-			.toArray(String[]::new));
+		table.setColumns(
+				Stream.concat(Arrays.stream(pairArrayToSingle(subString(parseQuery, "SET ", "WHERE").split(","))),
+						Arrays.stream(table.getPrimaryKey())).toArray(String[]::new));
 		getAllSQL(table);
 		return table;
 	}
 
 	private static String getUpdateSQL(Table table) {
 		String setClause = Arrays.stream(table.getColumns())
-			.map(column -> column.trim() + " = #{" + snakeToCamel(column.trim()) + "}")
-			.collect(Collectors.joining(",\n\t"));
+				.map(column -> column.trim() + " = #{" + snakeToCamel(column.trim()) + "}")
+				.collect(Collectors.joining(",\n\t"));
 		return String.format("UPDATE\n\t%s\nSET\n\t%s\nWHERE\n\t%s", table.getTableName(), setClause,
-			whereClause(table));
+				whereClause(table));
 	}
 
 	private static String whereClause(Table table) {
 		return Arrays.stream(table.getPrimaryKey())
-			.map(column -> column.trim() + " = #{" + snakeToCamel(column.trim()) + "}")
-			.collect(Collectors.joining("\n\tAND "));
+				.map(column -> column.trim() + " = #{" + snakeToCamel(column.trim()) + "}")
+				.collect(Collectors.joining("\n\tAND "));
 	}
 
 	private static String[] pairArrayToSingle(String[] arr) {
-		return Arrays.stream(arr)
-			.map(String::trim)
-			.map(column -> column.split("=")[0].trim())
-			.toArray(String[]::new);
+		return Arrays.stream(arr).map(String::trim).map(column -> column.split("=")[0].trim()).toArray(String[]::new);
 	}
 
 	private static Table select(StringBuilder parseQuery) {
@@ -173,7 +168,7 @@ public class QueryParser {
 		String columns = subString(parseQuery, "SELECT ", "FROM");
 		table.setColumns(columns.split(","));
 		table.setTableName(subString(parseQuery, "FROM ", ";").contains(".") ? subString(parseQuery, ".", ";")
-			: subString(parseQuery, "FROM ", ";"));
+				: subString(parseQuery, "FROM ", ";"));
 		table.setAlias(getAlias(table.getTableName()));
 		setColumnsToPrimaryKey(table);
 		getAllSQL(table);
@@ -181,36 +176,49 @@ public class QueryParser {
 	}
 
 	private static String getSelectSQL(Table table) {
-		String columnAliases = Arrays.stream(table.getColumns())
-			.map(String::trim)
-			.map(column -> table.getAlias() + "." + column + " AS " + snakeToCamel(column))
-			.collect(Collectors.joining(",\n\t"));
+		String columnAliases = Arrays.stream(table.getColumns()).map(String::trim)
+				.map(column -> table.getAlias() + "." + column + " AS " + snakeToCamel(column))
+				.collect(Collectors.joining(",\n\t"));
 		return String.format("SELECT\n\t%s\nFROM\n\t%s AS %s", columnAliases, table.getTableName(), table.getAlias());
 	}
 
 	private static String getAlias(String tableName) {
-		return Arrays.stream(tableName.split("_"))
-			.map(word -> word.substring(0, 1))
-			.collect(Collectors.joining());
+		return Arrays.stream(tableName.split("_")).map(word -> word.substring(0, 1)).collect(Collectors.joining());
 	}
 
 	public static Table parseDDL(String ddl) {
 		Table table = new Table();
+
+		// 테이블 이름 추출
 		Matcher tableNameMatcher = Pattern.compile("CREATE TABLE `(\\w+)`").matcher(ddl);
 		if (tableNameMatcher.find()) {
 			table.setTableName(tableNameMatcher.group(1));
 		}
 		table.setAlias(getAlias(table.getTableName()));
-		Matcher columnMatcher = Pattern.compile("`(\\w+)`\\s+(\\w+\\(\\d+\\)(?:\\(\\d+\\))?)([^,]*)").matcher(ddl);
+
+		// 컬럼 이름 추출
 		List<String> columns = new ArrayList<>();
-		while (columnMatcher.find()) {
-			columns.add(columnMatcher.group(1));
+		String[] definitions = ddl.substring(ddl.indexOf("(") + 1, ddl.lastIndexOf(")")).trim().split(",");
+		Pattern columnPattern = Pattern.compile("`([^`]*)`\\s+[^,]+"); // 컬럼 정의 정규 표현식
+		for (String definition : definitions) {
+			definition = definition.trim();
+			if (!definition.startsWith("PRIMARY KEY") && !definition.startsWith("FOREIGN KEY")
+					&& !definition.startsWith("UNIQUE") && !definition.startsWith("INDEX")
+					&& !definition.startsWith("CONSTRAINT") && !definition.startsWith("COMMENT")) {
+				Matcher columnMatcher = columnPattern.matcher(definition);
+				if (columnMatcher.find()) {
+					columns.add(columnMatcher.group(1));
+				}
+			}
 		}
-		Matcher pkMatcher = Pattern.compile("PRIMARY KEY \\(`(\\w+)`\\)").matcher(ddl);
+
+		// PRIMARY KEY 추출
+		Matcher pkMatcher = Pattern.compile("PRIMARY KEY \\(`([^`]*)`(?:,`[^`]*)*`\\)").matcher(ddl);
 		List<String> primaryKeys = new ArrayList<>();
-		if (pkMatcher.find()) {
-			primaryKeys.add(pkMatcher.group(1));
+		while (pkMatcher.find()) {
+			Collections.addAll(primaryKeys, pkMatcher.group(1).split("`,`"));
 		}
+
 		table.setColumns(columns.toArray(new String[0]));
 		table.setPrimaryKey(primaryKeys.toArray(new String[0]));
 		return table;
@@ -230,12 +238,10 @@ public class QueryParser {
 	}
 
 	private static String snakeToCamel(String param) {
-		return IntStream.range(0, param.split("_").length)
-			.mapToObj(i -> {
-				String word = param.split("_")[i];
-				return i == 0 ? word : capitalize(word);
-			})
-			.collect(Collectors.joining());
+		return IntStream.range(0, param.split("_").length).mapToObj(i -> {
+			String word = param.split("_")[i];
+			return i == 0 ? word : capitalize(word);
+		}).collect(Collectors.joining());
 	}
 
 	private static String capitalize(String word) {
@@ -258,8 +264,8 @@ public class QueryParser {
 
 	private static String subString(StringBuilder stringBuilder, String condition1, String condition2) {
 		return stringBuilder
-			.substring(stringBuilder.indexOf(condition1) + condition1.length(), stringBuilder.indexOf(condition2))
-			.trim();
+				.substring(stringBuilder.indexOf(condition1) + condition1.length(), stringBuilder.indexOf(condition2))
+				.trim();
 	}
 
 	private static String subString(String str, String condition, boolean isFront) {
