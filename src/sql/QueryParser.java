@@ -56,13 +56,13 @@ public class QueryParser {
 		case "CREATE":
 			return tableToQuery(parseDDL(stringBuilder.toString()));
 		case "DELETE":
-			return delete(stringBuilder);
+			return tableToQuery(delete(stringBuilder));
 		case "UPDATE":
-			return update(stringBuilder);
+			return tableToQuery(update(stringBuilder));
 		case "INSERT":
-			return insert(stringBuilder);
+			return tableToQuery(insert(stringBuilder));
 		case "SELECT":
-			return select(stringBuilder);
+			return tableToQuery(select(stringBuilder));
 		default:
 			return null;
 		}
@@ -102,7 +102,6 @@ public class QueryParser {
 		table.setAlias(getAlias(table.getTableName()));
 		table.setColumns(subString(parseQuery, "(", ")").split(","));
 		setColumnsToPrimaryKey(table);
-		getAllSQL(table);
 		return table;
 	}
 
@@ -125,7 +124,6 @@ public class QueryParser {
 		table.setAlias(getAlias(table.getTableName()));
 		table.setPrimaryKey(pairArrayToSingle(subString(parseQuery, "WHERE ", ";").split("AND")));
 		table.setColumns(table.getPrimaryKey());
-		getAllSQL(table);
 		return table;
 	}
 
@@ -142,7 +140,6 @@ public class QueryParser {
 		table.setColumns(
 				Stream.concat(Arrays.stream(pairArrayToSingle(subString(parseQuery, "SET ", "WHERE").split(","))),
 						Arrays.stream(table.getPrimaryKey())).toArray(String[]::new));
-		getAllSQL(table);
 		return table;
 	}
 
@@ -172,7 +169,6 @@ public class QueryParser {
 				: subString(parseQuery, "FROM ", ";"));
 		table.setAlias(getAlias(table.getTableName()));
 		setColumnsToPrimaryKey(table);
-		getAllSQL(table);
 		return table;
 	}
 
