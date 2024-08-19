@@ -16,7 +16,8 @@ import java.util.stream.Stream;
 
 import sql.model.Table;
 
-public static void main(String[] args) {
+public class QueryParser {
+	public static void main(String[] args) {
 		Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
 		Transferable transferable = clipboard.getContents(null); // 클립보드에서 데이터 가져오기
 		Table table = null;
@@ -213,14 +214,17 @@ public static void main(String[] args) {
 		}
 
 		// PRIMARY KEY 추출
-		Matcher pkMatcher = Pattern.compile("PRIMARY KEY \\(`([^`]*)`(?:,`[^`]*)*`\\)").matcher(ddl);
 		List<String> primaryKeys = new ArrayList<>();
+		Matcher pkMatcher = Pattern.compile("PRIMARY KEY \\(([^)]+)\\)").matcher(ddl);
 		while (pkMatcher.find()) {
-			Collections.addAll(primaryKeys, pkMatcher.group(1).split("`,`"));
+			String[] pkCols = pkMatcher.group(1).split("`,`");
+			Collections.addAll(primaryKeys, pkCols);
 		}
 
 		table.setColumns(columns.toArray(new String[0]));
-		table.setPrimaryKey(primaryKeys.toArray(new String[0]));
+		table.setPrimaryKey(primaryKeys.stream().map(column -> column.replaceAll("[`'\"\\s]+", ""))
+				.collect(Collectors.toList()).toArray(new String[0]));
+		getAllSQL(table);
 		return table;
 	}
 
