@@ -46,7 +46,7 @@ public class QueryParser {
 				return type;
 			}
 		}
-		return "SELECT"; // Default to SELECT if no type is found
+		return null; // Default to null if no type is found
 	}
 
 	private static Table handleQuery(String queryType, StringBuilder stringBuilder) {
