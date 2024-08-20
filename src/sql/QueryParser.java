@@ -114,7 +114,7 @@ public class QueryParser {
 
 	private static void setColumnsToPrimaryKey(Table table) {
 		table.setPrimaryKey(
-				Arrays.stream(table.getColumns()).filter(column -> column.contains("id")).toArray(String[]::new));
+				Arrays.stream(table.getColumns()).filter(column -> (column.contains("id") || column.contains("seq")).toArray(String[]::new));
 	}
 
 	private static Table delete(StringBuilder parseQuery) {
