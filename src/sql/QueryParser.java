@@ -195,7 +195,7 @@ public class QueryParser {
 
 		// 컬럼 이름 추출
 		List<String> columns = new ArrayList<>();
-		String[] definitions = ddl.substring(ddl.indexOf("(") + 1, ddl.lastIndexOf(")")).trim().split(",");
+		String[] definitions = ddl.substring(ddl.indexOf("(") + 1, ddl.lastIndexOf(")")).trim().split("\n");
 		Pattern columnPattern = Pattern.compile("`([^`]*)`\\s+[^,]+"); // 컬럼 정의 정규 표현식
 		for (String definition : definitions) {
 			definition = definition.trim();
