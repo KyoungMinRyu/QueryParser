@@ -32,23 +32,27 @@ public class QueryParser {
 
                 System.out.println("수정 후\n\n" + (table != null ? table.toString() : "Parsing Error"));
                 clipboard.setContents(new StringSelection(table.getAllSQL()), null); // 클립보드에 다시 넣기
+            } catch (NameNotFoundException e) {
+                System.out.println("Is Not SQL");
             } catch (StringIndexOutOfBoundsException e) {
-                System.out.println("SQL 구문 오류");
+                System.out.println("SQL Error");
             } catch (IllegalArgumentException e) {
-                System.out.println("CREATE DDL 구문 오류");
+                System.out.println("CREATE DDL SQL Error");
+            } catch (NullPointerException e) {
+                System.out.println("Collectors Stream Error");
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
     }
 
-    private static String detectQueryType(String query) {
+    private static String detectQueryType(String query) throws NameNotFoundException{
         for (String type : Arrays.asList("CREATE", "DELETE", "UPDATE", "INSERT", "SELECT")) {
             if (query.contains(type)) {
                 return type;
             }
         }
-        return null; // Default to null if no type is found
+        throw new NameNotFoundException(); // Default to null if no type is found
     }
 
     private static Table handleQuery(String queryType, StringBuilder stringBuilder) {
