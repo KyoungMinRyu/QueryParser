@@ -28,7 +28,7 @@ public class QueryParser {
                     (String) transferable.getTransferData(DataFlavor.stringFlavor));
                 System.out.println("원본\n" + stringBuilder.toString() + "\n\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
 
-                table = handleQuery(detectQueryType(stringBuilder.toString()), stringBuilder);
+                table = handleQuery(detectQueryType(stringBuilder.toString()), stringBuilder, false, true, false);
 
                 System.out.println("수정 후\n\n" + (table != null ? table.toString() : "Parsing Error"));
                 clipboard.setContents(new StringSelection(table.getAllSQL()), null); // 클립보드에 다시 넣기
@@ -46,70 +46,57 @@ public class QueryParser {
         }
     }
 
-    private static String detectQueryType(String query) throws NameNotFoundException{
-        for (String type : Arrays.asList("CREATE", "DELETE", "UPDATE", "INSERT", "SELECT")) {
-            if (query.contains(type)) {
-                return type;
-            }
-        }
-        throw new NameNotFoundException(); // Default to null if no type is found
+    /**
+     * <pre>
+     * 메소드명 : detectQueryType
+     * 작성자 : LAM
+     * 작성일 : 2024.10.10
+     * @param String query
+     * @return String query
+     * @throws NameNotFoundException
+     * @apiNote 들어온 SQL 쿼리 문을 CREATE, DELETE, UPDATE, INSERT, SELECT를 선택한다.
+     * </pre>
+     */
+    private static String detectQueryType(String query) throws NameNotFoundException {
+        return Arrays.asList("CREATE", "DELETE", "UPDATE", "INSERT", "SELECT").stream().filter(query::contains)
+            .findFirst()
+            .orElseThrow(() -> new NameNotFoundException("Query type not found"));
     }
 
-    private static Table handleQuery(String queryType, StringBuilder stringBuilder) {
+    private static Table handleQuery(
+        String queryType, StringBuilder sql, boolean firstLineDrop, boolean isCommaFront, boolean newAlias) {
         switch (queryType) {
             case "CREATE":
-                return tableToQuery(parseDDL(stringBuilder.toString()));
+                return tableToQuery(parseDDL(sql), firstLineDrop, isCommaFront, newAlias);
             case "DELETE":
-                return tableToQuery(delete(stringBuilder));
+                return tableToQuery(delete(sql), firstLineDrop, isCommaFront, newAlias);
             case "UPDATE":
-                return tableToQuery(update(stringBuilder));
+                return tableToQuery(update(sql), firstLineDrop, isCommaFront, newAlias);
             case "INSERT":
-                return tableToQuery(insert(stringBuilder));
+                return tableToQuery(insert(sql), firstLineDrop, isCommaFront, newAlias);
             case "SELECT":
-                return tableToQuery(select(stringBuilder));
+                return tableToQuery(select(sql), firstLineDrop, isCommaFront, newAlias);
             default:
-                return null;
+                throw new IllegalArgumentException("Unsupported query type: " + queryType);
         }
     }
 
-    private static void getAllSQL(Table table) {
-        StringBuilder concatAllSQL = new StringBuilder();
-
-        concatAllSQL.append("================================================================\n\n");
-        table.setSelectSQL(getSelectSQL(table, true, false, false));
-        concatAllSQL.append(table.getSelectSQL());
-        concatAllSQL.append("\n\n================================================================");
-
-        concatAllSQL.append("================================================================\n\n");
-        table.setInsertSQL(getInsertSQL(table, true, false));
-        concatAllSQL.append(table.getInsertSQL());
-        concatAllSQL.append("\n\n================================================================");
-
-        concatAllSQL.append("================================================================\n\n");
-        table.setUpdateSQL(getUpdateSQL(table, true, false));
-        concatAllSQL.append(table.getUpdateSQL());
-        concatAllSQL.append("\n\n================================================================");
-
-        concatAllSQL.append("================================================================\n\n");
-        table.setDeleteSQL(getDeleteSQL(table, false));
-        concatAllSQL.append(table.getDeleteSQL());
-        concatAllSQL.append("\n\n================================================================");
-
-        table.setAllSQL(concatAllSQL.toString());
+    private static String extractTableName(StringBuilder parseQuery, String startKeyword, String endKeyword) {
+        String tableName = subString(parseQuery, startKeyword, endKeyword);
+        return tableName.contains(".") ? subString(parseQuery, ".", endKeyword) : tableName;
     }
+
 
     private static Table insert(StringBuilder parseQuery) {
         Table table = new Table();
-        String tableName = subString(parseQuery, "INSERT INTO ", "(");
-        table.setTableName(
-            tableName.contains(".") ? subString(parseQuery, ".", "(") : subString(parseQuery, "INSERT INTO ", ";"));
+        table.setTableName(extractTableName(parseQuery, "INSERT INTO ", "("));
         table.setAlias(getAlias(table.getTableName()));
         table.setColumns(subString(parseQuery, "(", ")").split(","));
         setColumnsToPrimaryKey(table);
         return table;
     }
 
-    private static String getInsertSQL(Table table, boolean isCommaFront, boolean firstLineDrop) {
+    private static String getInsertSQL(Table table, boolean firstLineDrop, boolean isCommaFront) {
         String columns = Arrays.stream(table.getColumns()).map(String::trim)
             .collect(Collectors.joining(isCommaFront ? "\n\t, " : ",\n\t"));
         String values = Arrays.stream(table.getColumns()).map(column -> "#{" + snakeToCamel(column.trim()) + "}")
@@ -126,8 +113,7 @@ public class QueryParser {
 
     private static Table delete(StringBuilder parseQuery) {
         Table table = new Table();
-        table.setTableName(subString(parseQuery, "FROM ", "WHERE").contains(".") ? subString(parseQuery, ".", "WHERE")
-            : subString(parseQuery, "FROM ", "WHERE"));
+        table.setTableName(extractTableName(parseQuery, "FROM ", "WHERE"));
         table.setAlias(getAlias(table.getTableName()));
         table.setPrimaryKey(pairArrayToSingle(subString(parseQuery, "WHERE ", ";").split("AND")));
         table.setColumns(table.getPrimaryKey());
@@ -141,8 +127,7 @@ public class QueryParser {
 
     private static Table update(StringBuilder parseQuery) {
         Table table = new Table();
-        table.setTableName(subString(parseQuery, "UPDATE ", "SET").contains(".") ? subString(parseQuery, ".", "SET")
-            : subString(parseQuery, "UPDATE ", "SET"));
+        table.setTableName(extractTableName(parseQuery, "UPDATE ", "SET"));
         table.setAlias(getAlias(table.getTableName()));
         table.setPrimaryKey(pairArrayToSingle(subString(parseQuery, "WHERE ", ";").split("AND")));
         table.setColumns(
@@ -151,7 +136,7 @@ public class QueryParser {
         return table;
     }
 
-    private static String getUpdateSQL(Table table, boolean isCommaFront, boolean firstLineDrop) {
+    private static String getUpdateSQL(Table table, boolean firstLineDrop, boolean isCommaFront) {
         String setClause = Arrays.stream(table.getColumns())
             .map(column -> column.trim() + " = #{" + snakeToCamel(column.trim()) + "}")
             .collect(Collectors.joining(isCommaFront ? "\n\t, " : ",\n\t"));
@@ -174,14 +159,13 @@ public class QueryParser {
         Table table = new Table();
         String columns = subString(parseQuery, "SELECT ", "FROM");
         table.setColumns(columns.split(","));
-        table.setTableName(subString(parseQuery, "FROM ", ";").contains(".") ? subString(parseQuery, ".", ";")
-            : subString(parseQuery, "FROM ", ";"));
+        table.setTableName(extractTableName(parseQuery, "FROM ", ";"));
         table.setAlias(getAlias(table.getTableName()));
         setColumnsToPrimaryKey(table);
         return table;
     }
 
-    private static String getSelectSQL(Table table, boolean isCommaFront, boolean newAlias, boolean firstLineDrop) {
+    private static String getSelectSQL(Table table, boolean firstLineDrop, boolean isCommaFront, boolean newAlias) {
         String columnAliases = Arrays.stream(table.getColumns()).map(String::trim)
             .map(column -> newAlias ? table.getAlias() + "." + column + " AS " + snakeToCamel(column) :
                 table.getAlias() + "." + column)
@@ -194,11 +178,11 @@ public class QueryParser {
         return Arrays.stream(tableName.split("_")).map(word -> word.substring(0, 1)).collect(Collectors.joining());
     }
 
-    public static Table parseDDL(String ddl) {
+    public static Table parseDDL(StringBuilder parseQuery) {
         Table table = new Table();
 
         // 테이블 이름 추출
-        Matcher tableNameMatcher = Pattern.compile("CREATE TABLE `(\\w+)`").matcher(ddl);
+        Matcher tableNameMatcher = Pattern.compile("CREATE TABLE `(\\w+)`").matcher(parseQuery.toString());
         if (tableNameMatcher.find()) {
             table.setTableName(tableNameMatcher.group(1));
         }
@@ -206,10 +190,10 @@ public class QueryParser {
 
         // 컬럼 이름 추출
         List<String> columns = new ArrayList<>();
+        String ddl = parseQuery.toString();
         String[] definitions = ddl.substring(ddl.indexOf("(") + 1, ddl.lastIndexOf(")")).trim().split("\n");
         Pattern columnPattern = Pattern.compile("`([^`]*)`\\s+[^,]+"); // 컬럼 정의 정규 표현식
         for (String definition : definitions) {
-
             definition = definition.trim();
             if (!definition.startsWith("PRIMARY KEY") && !definition.startsWith("FOREIGN KEY")
                 && !definition.startsWith("UNIQUE") && !definition.startsWith("INDEX")
@@ -236,8 +220,31 @@ public class QueryParser {
         return table;
     }
 
-    public static Table tableToQuery(Table table) {
-        getAllSQL(table);
+    public static Table tableToQuery(Table table, boolean firstLineDrop, boolean isCommaFront, boolean newAlias) {
+        StringBuilder concatAllSQL = new StringBuilder();
+
+        concatAllSQL.append("================================================================\n\n");
+        table.setSelectSQL(getSelectSQL(table, firstLineDrop, isCommaFront, newAlias));
+        concatAllSQL.append(table.getSelectSQL());
+        concatAllSQL.append("\n\n================================================================");
+
+        concatAllSQL.append("================================================================\n\n");
+        table.setInsertSQL(getInsertSQL(table, firstLineDrop, isCommaFront));
+        concatAllSQL.append(table.getInsertSQL());
+        concatAllSQL.append("\n\n================================================================");
+
+        concatAllSQL.append("================================================================\n\n");
+        table.setUpdateSQL(getUpdateSQL(table, firstLineDrop, isCommaFront));
+        concatAllSQL.append(table.getUpdateSQL());
+        concatAllSQL.append("\n\n================================================================");
+
+        concatAllSQL.append("================================================================\n\n");
+        table.setDeleteSQL(getDeleteSQL(table, firstLineDrop));
+        concatAllSQL.append(table.getDeleteSQL());
+        concatAllSQL.append("\n\n================================================================");
+
+        table.setAllSQL(concatAllSQL.toString());
+
         return table;
     }
 
