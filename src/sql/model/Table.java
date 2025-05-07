@@ -1,6 +1,8 @@
 package sql.model;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class Table {
 	private String tableName;
@@ -12,8 +14,26 @@ public class Table {
 	private String updateSQL;
 	private String deleteSQL;
 	private String allSQL;
+	private Map<String, String> columnJavaTypeMap = new LinkedHashMap<>();
+	private Map<String, String> columnCommentMap = new LinkedHashMap<>();
 
 	// Getters and setters
+
+	public Map<String, String> getColumnCommentMap() {
+		return columnCommentMap;
+	}
+
+	public void setColumnCommentMap(Map<String, String> columnCommentMap) {
+		this.columnCommentMap = columnCommentMap;
+	}
+
+	public Map<String, String> getColumnJavaTypeMap() {
+		return columnJavaTypeMap;
+	}
+
+	public void setColumnJavaTypeMap(Map<String, String> columnJavaTypeMap) {
+		this.columnJavaTypeMap = columnJavaTypeMap;
+	}
 
 	public String getAllSQL() {
 		return allSQL;
