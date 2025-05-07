@@ -44,6 +44,10 @@ public class QueryParsing {
                     generateTypeScriptTypeFile(table, makeFilePath);
                 }
 
+                if (makeJavaTypeBool || makeTypeScriptBool) {
+                	new ProcessBuilder("cmd.exe", "/c", "start", makeFilePath).start();
+                }
+                
             } catch (NameNotFoundException e) {
                 System.out.println("Is Not SQL");
             } catch (StringIndexOutOfBoundsException e) {
