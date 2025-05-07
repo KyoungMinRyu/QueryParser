@@ -16,11 +16,14 @@ import java.util.stream.Stream;
 
 import sql.model.Table;
 
-public class QueryParser {
-	public static void main(String[] args) {
+public class QueryParsing {
+    public static void main(String[] args) {
         Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
         Transferable transferable = clipboard.getContents(null); // 클립보드에서 데이터 가져오기
         Table table = null;
+        boolean makeJavaTypeBool = true;
+        boolean makeTypeScriptBool = true;
+        String makeFilePath = "D:/";
 
         if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
             try {
@@ -32,6 +35,15 @@ public class QueryParser {
 
                 System.out.println("수정 후\n\n" + (table != null ? table.toString() : "Parsing Error"));
                 clipboard.setContents(new StringSelection(table.getAllSQL()), null); // 클립보드에 다시 넣기
+
+                if (makeJavaTypeBool) {
+                    generateDtoFile(table, makeFilePath);
+                }
+
+                if (makeTypeScriptBool) {
+                    generateTypeScriptTypeFile(table, makeFilePath);
+                }
+
             } catch (NameNotFoundException e) {
                 System.out.println("Is Not SQL");
             } catch (StringIndexOutOfBoundsException e) {
@@ -40,6 +52,8 @@ public class QueryParser {
                 System.out.println("CREATE DDL SQL Error");
             } catch (NullPointerException e) {
                 System.out.println("Collectors Stream Error");
+            } catch (IOException e) {
+                System.out.println("Write File Error");
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -192,16 +206,27 @@ public class QueryParser {
         List<String> columns = new ArrayList<>();
         String ddl = parseQuery.toString();
         String[] definitions = ddl.substring(ddl.indexOf("(") + 1, ddl.lastIndexOf(")")).trim().split("\n");
-        Pattern columnPattern = Pattern.compile("`([^`]*)`\\s+[^,]+"); // 컬럼 정의 정규 표현식
+        Pattern columnPattern =
+            Pattern.compile("`([^`]*)`\\s+([^\\s,]+(?:\\s*\\([^\\)]*\\))?)", Pattern.CASE_INSENSITIVE);
+        Pattern commentPattern = Pattern.compile("COMMENT\\s+'([^']*)'");
         for (String definition : definitions) {
             definition = definition.trim();
             if (!definition.startsWith("PRIMARY KEY") && !definition.startsWith("FOREIGN KEY")
                 && !definition.startsWith("UNIQUE") && !definition.startsWith("INDEX")
                 && !definition.startsWith("CONSTRAINT") && !definition.startsWith("COMMENT")
                 && !definition.startsWith("KEY") && !definition.startsWith("REFERENCES")) {
+
                 Matcher columnMatcher = columnPattern.matcher(definition);
                 if (columnMatcher.find()) {
-                    columns.add(columnMatcher.group(1));
+                    String columnName = columnMatcher.group(1);
+                    columns.add(columnName);
+                    table.getColumnJavaTypeMap().put(columnName, sqlTypeToJavaType(columnMatcher.group(2).trim()));
+                    Matcher commentMatcher = commentPattern.matcher(definition);
+                    if (commentMatcher.find()) {
+                        table.getColumnCommentMap().put(columnName, commentMatcher.group(1));
+                    } else {
+                        table.getColumnCommentMap().put(columnName, "");
+                    }
                 }
             }
         }
@@ -218,6 +243,34 @@ public class QueryParser {
         table.setPrimaryKey(primaryKeys.stream().map(column -> column.replaceAll("[`'\"\\s]+", ""))
             .collect(Collectors.toList()).toArray(new String[0]));
         return table;
+    }
+
+    private static String sqlTypeToJavaType(String sqlType) {
+        sqlType = sqlType.toUpperCase();
+
+        if (sqlType.startsWith("INT") || sqlType.startsWith("INTEGER") || sqlType.startsWith("MEDIUMINT")) {
+            return "Integer";
+        } else if (sqlType.startsWith("BIGINT")) {
+            return "Long";
+        } else if (sqlType.startsWith("SMALLINT") || sqlType.startsWith("TINYINT")) {
+            return "Short";
+        } else if (sqlType.startsWith("FLOAT")) {
+            return "Float";
+        } else if (sqlType.startsWith("DOUBLE") || sqlType.startsWith("DECIMAL") || sqlType.startsWith("NUMERIC")) {
+            return "Double";
+        } else if (sqlType.startsWith("CHAR") || sqlType.startsWith("VARCHAR") || sqlType.startsWith("TEXT")
+                   || sqlType.startsWith("ENUM")) {
+            return "String";
+        } else if (sqlType.startsWith("DATE") || sqlType.startsWith("TIME") || sqlType.startsWith("DATETIME")
+                   || sqlType.startsWith("TIMESTAMP")) {
+            return "LocalDateTime"; // 필요 시 LocalDate, LocalTime으로 분리
+        } else if (sqlType.startsWith("BOOLEAN") || sqlType.startsWith("BIT")) {
+            return "Boolean";
+        } else if (sqlType.startsWith("BLOB") || sqlType.startsWith("BINARY")) {
+            return "byte[]";
+        }
+
+        return "Object"; // 기본 fallback
     }
 
     public static Table tableToQuery(Table table, boolean firstLineDrop, boolean isCommaFront, boolean newAlias) {
@@ -246,6 +299,113 @@ public class QueryParser {
         table.setAllSQL(concatAllSQL.toString());
 
         return table;
+    }
+
+    private static void generateDtoFile(Table table, String outputDirPath) throws IOException {
+        String className = capitalize(snakeToCamel(table.getTableName())) + "Entity";
+        StringBuilder sb = new StringBuilder();
+
+        Set<String> imports = new HashSet<>();
+        for (String type : table.getColumnJavaTypeMap().values()) {
+            if (type.equals("LocalDate") || type.equals("LocalDateTime")) {
+                imports.add("import java.time." + type + ";");
+            } else if (type.equals("BigDecimal")) {
+                imports.add("import java.math.BigDecimal;");
+            }
+        }
+
+        for (String importLine : imports) {
+            sb.append(importLine).append("\n");
+        }
+
+        sb.append("\nimport io.swagger.v3.oas.annotations.media.Schema;\n");
+        sb.append("import lombok.Getter;\n");
+        sb.append("import lombok.NoArgsConstructor;\n");
+        sb.append("import lombok.Setter;\n");
+        sb.append("import lombok.ToString;\n");
+
+        if (!imports.isEmpty()) {
+            sb.append("\n");
+        }
+
+        sb.append("@Getter\n"
+                  + "@Setter\n"
+                  + "@ToString\n"
+                  + "@NoArgsConstructor\n"
+                  + "public class ").append(className).append(" {\n\n");
+
+        for (Map.Entry<String, String> entry : table.getColumnJavaTypeMap().entrySet()) {
+            String column = entry.getKey();
+            String javaType = entry.getValue();
+            String fieldName = snakeToCamel(entry.getKey());
+            String comment = table.getColumnCommentMap().getOrDefault(column, "");
+
+            if (!comment.isBlank()) {
+                sb.append("    @Schema(description = \"").append(comment).append("\")\n");
+            }
+
+            sb.append("    private ").append(javaType).append(" ").append(fieldName).append(";\n");
+        }
+
+        sb.append("\n}");
+
+        File outputDir = new File(outputDirPath);
+        if (!outputDir.exists()) {
+            outputDir.mkdirs();
+        }
+
+        Path filePath = Paths.get(outputDirPath, className + ".java");
+        Files.write(filePath, sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void generateTypeScriptTypeFile(Table table, String outputDirPath) throws IOException {
+        String typeName = capitalize(snakeToCamel(table.getTableName())) + "Entity";
+        StringBuilder ts = new StringBuilder();
+
+        ts.append("/**\n * @name ").append(typeName).append("\n */\n");
+        ts.append("export type ").append(typeName).append(" = {\n");
+
+        for (Map.Entry<String, String> entry : table.getColumnJavaTypeMap().entrySet()) {
+            String fieldName = snakeToCamel(entry.getKey());
+            String javaType = entry.getValue();
+            String tsType;
+
+            // Java → TypeScript 타입 매핑
+            switch (javaType) {
+                case "LocalDate":
+                case "LocalDateTime":
+                case "Date":
+                    tsType = "Date | string";
+                    break;
+                case "Long":
+                case "Integer":
+                case "Double":
+                case "BigDecimal":
+                    tsType = "number";
+                    break;
+                case "Boolean":
+                    tsType = "boolean";
+                    break;
+                case "String":
+                default:
+                    tsType = "string";
+                    break;
+            }
+
+            ts.append("  /** @name ").append(table.getColumnCommentMap().getOrDefault(entry.getKey(), ""))
+                .append(" */\n");
+            ts.append("  ").append(fieldName).append("?: ").append(tsType).append(";\n");
+        }
+
+        ts.append("};\n");
+
+        File outputDir = new File(outputDirPath);
+        if (!outputDir.exists()) {
+            outputDir.mkdirs();
+        }
+
+        Path filePath = Paths.get(outputDirPath, typeName + ".ts");
+        Files.write(filePath, ts.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     public static String paramToCoalesce(String alias, String param) {
